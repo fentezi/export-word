@@ -63,7 +63,7 @@ func (s *Service) Run(ctx context.Context) error {
 			case <-ctx.Done():
 				s.log.Info("stop writeWordsToFileAndSend goroutine")
 				return
-			case <-time.After(120 * time.Second):
+			case <-time.After(12 * time.Hour):
 				s.writeWordsToFileAndSend(ctx)
 			}
 		}
