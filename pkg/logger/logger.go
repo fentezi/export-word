@@ -8,16 +8,8 @@ import (
 	"github.com/natefinch/lumberjack"
 )
 
-func NewLogger(env string) *slog.Logger {
+func New(env string) *slog.Logger {
 	var logger *slog.Logger
-
-	replace := func(groups []string, a slog.Attr) slog.Attr {
-		if a.Key == "password" || a.Key == "address" || a.Key == "MONGO_URL" ||
-			a.Key == "GMAIL_PASSWORD" || a.Key == "url" {
-			a.Value = slog.StringValue("******")
-		}
-		return a
-	}
 
 	switch env {
 	case "dev":
@@ -30,6 +22,14 @@ func NewLogger(env string) *slog.Logger {
 		)
 		logger = slog.New(prettyHandler)
 	case "prod":
+		replace := func(groups []string, a slog.Attr) slog.Attr {
+			if a.Key == "password" || a.Key == "address" || a.Key == "MONGO_URL" ||
+				a.Key == "GMAIL_PASSWORD" || a.Key == "url" {
+				a.Value = slog.StringValue("******")
+			}
+			return a
+		}
+
 		rotationLogFile := &lumberjack.Logger{
 			Filename:   "./logs/app.log",
 			MaxSize:    10,

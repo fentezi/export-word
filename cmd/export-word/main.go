@@ -14,7 +14,7 @@ import (
 
 func run() error {
 	cfg := config.MustConfig()
-	log := logger.NewLogger(cfg.Env)
+	log := logger.New(cfg.Env)
 
 	log.Info("init config")
 

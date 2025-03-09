@@ -200,7 +200,7 @@ func suppressDefaults(
 	}
 }
 
-func New(handlerOptions *slog.HandlerOptions, options ...Option) *Handler {
+func NewPretty(handlerOptions *slog.HandlerOptions, options ...Option) *Handler {
 	if handlerOptions == nil {
 		handlerOptions = &slog.HandlerOptions{}
 	}
@@ -227,7 +227,7 @@ func New(handlerOptions *slog.HandlerOptions, options ...Option) *Handler {
 }
 
 func NewHandler(opts *slog.HandlerOptions) *Handler {
-	return New(opts, WithDestinationWriter(os.Stdout), WithColor(), WithOutputEmptyAttrs())
+	return NewPretty(opts, WithDestinationWriter(os.Stdout), WithColor(), WithOutputEmptyAttrs())
 }
 
 type Option func(h *Handler)
