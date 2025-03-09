@@ -1,0 +1,9 @@
+env: "dev"
+server:
+  host: "localhost"
+  port: "8070"
+kafka:
+  address: "localhost"
+  port: "29092"
+mongo:
+  database: "words"
