@@ -2,65 +2,41 @@ package main
 
 import (
 	"context"
-	"github.com/fentezi/export-word/config"
-	"github.com/fentezi/export-word/internal/gmail"
-	"github.com/fentezi/export-word/internal/kafka"
+	"github.com/fentezi/export-word/internal/config"
 	"github.com/fentezi/export-word/internal/repository"
 	"github.com/fentezi/export-word/internal/service"
-	"github.com/fentezi/export-word/pkg/logger"
+	"github.com/fentezi/export-word/pkg/logging"
+	"log"
 	"log/slog"
 	"os"
 )
 
-func run() error {
+func main() {
+	log.Print("config initializing")
 	cfg := config.MustConfig()
-	log := logger.New(cfg.Env)
 
-	log.Info("init config")
+	log.Print("logger initialized")
+	logger := logging.New(cfg.Env)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	repo, err := repository.New(ctx, log, cfg.Mongo)
+	log.Print("repository initialized")
+	repo, err := repository.New(ctx, cfg.Mongo, logger)
 	if err != nil {
-		log.Error("failed to create repository", slog.String("error", err.Error()))
-		return err
+		logger.Error("failed to create repository", slog.String("error", err.Error()))
 	}
-	defer func() {
-		if err := repo.Close(ctx); err != nil {
-			log.Error("failed to close repository", slog.String("error", err.Error()))
-		}
-	}()
-	log.Info("repository created")
+	defer repo.Close(ctx)
 
-	email := gmail.New(cfg.Gmail)
-	log.Info("gmail client created")
-
-	broker, err := kafka.New(log, cfg.Kafka)
+	expWord, err := service.New(logger, cfg, repo)
 	if err != nil {
-		log.Error("failed to create kafka broker", slog.String("error", err.Error()))
-		return err
-	}
-	defer func() {
-		if err := broker.Close(); err != nil {
-			log.Error("failed to close kafka broker", slog.String("error", err.Error()))
-		}
-	}()
-	log.Info("broker created")
-
-	sv := service.New(log, cfg, broker, email, repo)
-
-	if err := sv.Run(ctx); err != nil {
-		log.Error("failed to run service", slog.String("error", err.Error()))
-		return err
-	}
-
-	log.Info("service run")
-	return nil
-}
-
-func main() {
-	if err := run(); err != nil {
+		logger.Error("failed to create service", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
+
+	if err := expWord.Run(ctx); err != nil {
+		logger.Error("failed to run service", slog.String("error", err.Error()))
+	}
+
+	logger.Info("service run")
 }

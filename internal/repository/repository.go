@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/fentezi/export-word/config"
+	"github.com/fentezi/export-word/internal/config"
 	"github.com/fentezi/export-word/internal/entity"
 	"github.com/google/uuid"
 	"go.mongodb.org/mongo-driver/bson"
@@ -19,43 +19,43 @@ var (
 
 type Repository struct {
 	client *mongo.Client
-	log    *slog.Logger
+	logger *slog.Logger
 	cfg    config.Mongo
 }
 
-func New(ctx context.Context, log *slog.Logger, cfg config.Mongo) (*Repository, error) {
-	log.Info(
+func New(ctx context.Context, cfg config.Mongo, logger *slog.Logger) (Repository, error) {
+	logger.Info(
 		"repository init", slog.String("url", cfg.Address),
 		slog.String("database", cfg.Database),
 	)
 	client, err := mongo.Connect(ctx, options.Client().ApplyURI(cfg.Address))
 	if err != nil {
-		return nil, fmt.Errorf("failed to connect to mongodb: %w", err)
+		return Repository{}, fmt.Errorf("failed to connect to mongodb: %w", err)
 	}
 
 	err = client.Ping(ctx, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to ping mongodb: %w", err)
+		return Repository{}, fmt.Errorf("failed to ping mongodb: %w", err)
 	}
 
-	return &Repository{client: client, cfg: cfg, log: log}, nil
+	return Repository{client: client, cfg: cfg, logger: logger}, nil
 }
 
 func (r *Repository) Close(ctx context.Context) error {
-	r.log.Info("closing repository")
+	r.logger.Info("closing repository")
 	err := r.client.Disconnect(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to close repository: %w", err)
 	}
 
-	r.log.Info("repository closed")
+	r.logger.Info("repository closed")
 	return nil
 }
 
 func (r *Repository) CreateWord(ctx context.Context, msg entity.MongoMessage) error {
 	const op = "repository.CreateWord"
-	r.log.Debug("start", slog.String("op", op), slog.Any("message", msg))
-	defer r.log.Debug("end", slog.String("op", op))
+	r.logger.Debug("start", slog.String("op", op), slog.Any("message", msg))
+	defer r.logger.Debug("end", slog.String("op", op))
 	collection := r.client.Database(r.cfg.Database).Collection("words")
 	_, err := collection.InsertOne(ctx, msg)
 	if err != nil {
@@ -67,8 +67,8 @@ func (r *Repository) CreateWord(ctx context.Context, msg entity.MongoMessage) er
 
 func (r *Repository) GetWord(ctx context.Context, word string) (entity.MongoMessage, error) {
 	const op = "repository.GetWord"
-	r.log.Debug("start", slog.String("op", op), slog.String("word", word))
-	defer r.log.Debug("end", slog.String("op", op))
+	r.logger.Debug("start", slog.String("op", op), slog.String("word", word))
+	defer r.logger.Debug("end", slog.String("op", op))
 	collection := r.client.Database(r.cfg.Database).Collection("words")
 	var msg entity.MongoMessage
 	err := collection.FindOne(ctx, bson.M{"word": word}).Decode(&msg)
@@ -84,8 +84,8 @@ func (r *Repository) GetWord(ctx context.Context, word string) (entity.MongoMess
 
 func (r *Repository) GetWords(ctx context.Context) ([]entity.MongoMessage, error) {
 	const op = "repository.GetWords"
-	r.log.Debug("start", slog.String("op", op))
-	defer r.log.Debug("end", slog.String("op", op))
+	r.logger.Debug("start", slog.String("op", op))
+	defer r.logger.Debug("end", slog.String("op", op))
 	collection := r.client.Database(r.cfg.Database).Collection("words")
 
 	cursor, err := collection.Find(ctx, bson.M{"sent": false})
@@ -112,8 +112,8 @@ func (r *Repository) GetWords(ctx context.Context) ([]entity.MongoMessage, error
 
 func (r *Repository) UpdateWord(ctx context.Context, eventID uuid.UUID) error {
 	const op = "repository.UpdateWord"
-	r.log.Debug("start", slog.String("op", op), slog.Any("event_id", eventID))
-	defer r.log.Debug("end", slog.String("op", op))
+	r.logger.Debug("start", slog.String("op", op), slog.Any("event_id", eventID))
+	defer r.logger.Debug("end", slog.String("op", op))
 	collection := r.client.Database(r.cfg.Database).Collection("words")
 
 	_, err := collection.UpdateOne(
@@ -131,8 +131,8 @@ func (r *Repository) GetWordByEventID(
 	eventID uuid.UUID,
 ) (entity.MongoMessage, error) {
 	const op = "repository.GetWordByEventID"
-	r.log.Debug("start", slog.String("op", op), slog.Any("event_id", eventID))
-	defer r.log.Debug("end", slog.String("op", op))
+	r.logger.Debug("start", slog.String("op", op), slog.Any("event_id", eventID))
+	defer r.logger.Debug("end", slog.String("op", op))
 
 	collection := r.client.Database(r.cfg.Database).Collection("words")
 

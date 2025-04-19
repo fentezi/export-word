@@ -5,7 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/fentezi/export-word/config"
+	"github.com/docker/docker/daemon/logger"
+	"github.com/fentezi/export-word/internal/config"
 	"github.com/fentezi/export-word/internal/entity"
 	"github.com/fentezi/export-word/internal/gmail"
 	"github.com/fentezi/export-word/internal/kafka"
@@ -21,26 +22,36 @@ const (
 )
 
 type Service struct {
-	log       *slog.Logger
-	cfg       *config.Config
-	broker    *kafka.Consumer
-	gm        *gmail.Gmail
-	repo      *repository.Repository
+	logger    *slog.Logger
+	cfg       config.Config
+	email     gmail.Gmail
+	repo      repository.Repository
+	broker    kafka.Consumer
 	wordCount int
 }
 
 // New creates a new Service instance with the provided dependencies.
 func New(
-	log *slog.Logger, cfg *config.Config, broker *kafka.Consumer, gm *gmail.Gmail,
-	repo *repository.Repository,
-) *Service {
-	return &Service{
-		log:    log,
-		cfg:    cfg,
-		broker: broker,
-		gm:     gm,
-		repo:   repo,
+	logger *slog.Logger, cfg config.Config,
+	repo repository.Repository,
+) (Service, error) {
+	logger.Info("email initializing")
+	email := gmail.New(cfg.Gmail)
+
+	logger.Info("broker initializing")
+	broker, err := kafka.New(logger, cfg.Kafka)
+	if err != nil {
+		logger.Error("failed to create kafka broker", slog.String("error", err.Error()))
 	}
+	defer broker.Close()
+
+	return Service{
+		logger: logger,
+		cfg:    cfg,
+		email:  email,
+		broker: broker,
+		repo:   repo,
+	}, nil
 }
 
 // Run starts the service, consuming messages from Kafka and periodically writing words to a
@@ -61,16 +72,16 @@ func (s *Service) Run(ctx context.Context) error {
 		for {
 			select {
 			case <-ctx.Done():
-				s.log.Info("stop writeWordsToFileAndSend goroutine")
+				s.logger.Info("stop writeWordsToFileAndSend goroutine")
 				return
 			case <-time.After(12 * time.Hour):
 				s.writeWordsToFileAndSend(ctx)
 			}
 		}
 	}()
-	s.log.Info("wait goroutine")
+	s.logger.Info("wait goroutine")
 	wg.Wait()
-	s.log.Info("finish goroutine")
+	s.logger.Info("finish goroutine")
 	return nil
 }
 
@@ -78,19 +89,19 @@ func (s *Service) Run(ctx context.Context) error {
 func (s *Service) consumeMessages(ctx context.Context, topic string) {
 	ch, err := s.broker.Consume(ctx, topic)
 	if err != nil {
-		s.log.Error("failed to consume messages", "error", err)
+		s.logger.Error("failed to consume messages", "error", err)
 		return
 	}
 
 	for {
 		select {
 		case <-ctx.Done():
-			s.log.Info("stop consume messages")
+			s.logger.Info("stop consume messages")
 			return
 		case msg := <-ch:
-			s.log.Debug("get message", slog.String("message", string(msg)))
+			s.logger.Debug("get message", slog.String("message", string(msg)))
 			if err := s.processMessage(ctx, msg); err != nil {
-				s.log.Error("failed to process message", "error", err)
+				s.logger.Error("failed to process message", "error", err)
 			}
 		}
 	}
@@ -103,37 +114,37 @@ func (s *Service) processMessage(ctx context.Context, msg []byte) error {
 
 	m, err := toKafkaMessage(msg)
 	if err != nil {
-		s.log.Error(
+		s.logger.Error(
 			"failed to decode message", slog.String("error", err.Error()),
 			slog.String("message", string(msg)),
 		)
 		return fmt.Errorf("%s: %w", op, err)
 	}
-	s.log.Debug("decode message", slog.Any("message", m))
+	s.logger.Debug("decode message", slog.Any("message", m))
 
 	_, err = s.repo.GetWordByEventID(ctx, m.EventID)
 	if err != nil {
 		if errors.Is(err, repository.ErrDocumentNotFound) {
-			s.log.Info("message not found, creating", slog.Any("message", m))
+			s.logger.Info("message not found, creating", slog.Any("message", m))
 			if err := s.repo.CreateWord(ctx, toMongoMessage(m)); err != nil {
-				s.log.Error(
+				s.logger.Error(
 					"failed to save message to database", slog.String("error", err.Error()),
 					slog.Any("message", m),
 				)
 				return fmt.Errorf("failed to save message to database: %w", err)
 			}
-			s.log.Info("message created", slog.Any("message", m))
-			s.log.Info("processed message", "word", m.Word, "translation", m.Translation)
+			s.logger.Info("message created", slog.Any("message", m))
+			s.logger.Info("processed message", "word", m.Word, "translation", m.Translation)
 			return nil
 		}
-		s.log.Error(
+		s.logger.Error(
 			"failed to get word by event id", slog.String("error", err.Error()),
 			slog.Any("message", m),
 		)
 		return fmt.Errorf("%s: %w", op, err)
 	}
 
-	s.log.Info("processed message", "word", m.Word, "translation", m.Translation)
+	s.logger.Info("processed message", "word", m.Word, "translation", m.Translation)
 	return nil
 }
 
@@ -142,20 +153,20 @@ func (s *Service) processMessage(ctx context.Context, msg []byte) error {
 func (s *Service) writeWordsToFileAndSend(ctx context.Context) {
 	file, err := initFile()
 	if err != nil {
-		s.log.Error("failed to initialize file", "error", err)
+		s.logger.Error("failed to initialize file", "error", err)
 		return
 	}
 	defer file.Close()
-	s.log.Debug("file initialize")
+	s.logger.Debug("file initialize")
 
 	if err := s.writeWordsToFile(ctx, file); err != nil {
-		s.log.Error("failed to write words to file", "error", err)
+		s.logger.Error("failed to write words to file", "error", err)
 		return
 	}
-	s.log.Info("words write to file")
+	s.logger.Info("words write to file")
 
 	if s.wordCount == 0 {
-		s.log.Info("no words to send")
+		s.logger.Info("no words to send")
 		return
 	}
 
@@ -167,10 +178,10 @@ func (s *Service) writeWordsToFileAndSend(ctx context.Context) {
 		File:    wordsFileName,
 	}
 	if err := s.gm.SendMessage(msg); err != nil {
-		s.log.Error("failed to send message", "error", err)
+		s.logger.Error("failed to send message", "error", err)
 		return
 	}
-	s.log.Info("message send")
+	s.logger.Info("message send")
 }
 
 // writeWordsToFile retrieves words from the database and writes them to the specified file.
@@ -179,24 +190,24 @@ func (s *Service) writeWordsToFile(ctx context.Context, file *os.File) error {
 
 	words, err := s.repo.GetWords(ctx)
 	if err != nil {
-		s.log.Error("failed to get words from database", slog.String("error", err.Error()))
+		s.logger.Error("failed to get words from database", slog.String("error", err.Error()))
 		return fmt.Errorf("%s: %w", op, err)
 	}
-	s.log.Debug("get words count", slog.Int("count", len(words)))
+	s.logger.Debug("get words count", slog.Int("count", len(words)))
 
 	s.wordCount = 0
 
 	for _, word := range words {
 		line := fmt.Sprintf("%s;%s\n", word.Word, word.Translation)
 		if _, err := file.WriteString(line); err != nil {
-			s.log.Error(
+			s.logger.Error(
 				"failed to write to file", slog.String("error", err.Error()),
 				slog.String("line", line),
 			)
 			return fmt.Errorf("%s: %w", op, err)
 		}
 		if err := s.repo.UpdateWord(ctx, word.EventID); err != nil {
-			s.log.Error(
+			s.logger.Error(
 				"failed to update word", slog.String("error", err.Error()),
 				slog.Any("word", word),
 			)
@@ -205,7 +216,7 @@ func (s *Service) writeWordsToFile(ctx context.Context, file *os.File) error {
 		s.wordCount++
 	}
 
-	s.log.Info("words written to file", "count", len(words))
+	s.logger.Info("words written to file", "count", len(words))
 
 	return nil
 }

@@ -36,7 +36,7 @@ type Gmail struct {
 	Password string `env:"GMAIL_PASSWORD" env-required:"true"`
 }
 
-func MustConfig() *Config {
+func MustConfig() Config {
 	var cfg Config
 
 	if err := godotenv.Load(); err != nil {
@@ -52,5 +52,5 @@ func MustConfig() *Config {
 		panic(fmt.Errorf("failed to read config file from %s: %w", configPath, err))
 	}
 
-	return &cfg
+	return cfg
 }

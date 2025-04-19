@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
-	"github.com/fentezi/export-word/config"
+	"github.com/fentezi/export-word/internal/config"
 	"log/slog"
 	"time"
 )
@@ -15,8 +15,7 @@ type Consumer struct {
 	consumer *kafka.Consumer
 }
 
-func New(log *slog.Logger, broker config.Kafka) (*Consumer, error) {
-	log.Info("kafka init", slog.String("address", broker.Address), slog.String("port", broker.Port))
+func New(log *slog.Logger, broker config.Kafka) (Consumer, error) {
 	url := fmt.Sprintf("%s:%s", broker.Address, broker.Port)
 	conf := &kafka.ConfigMap{
 		"bootstrap.servers": url,
@@ -25,11 +24,10 @@ func New(log *slog.Logger, broker config.Kafka) (*Consumer, error) {
 	}
 	c, err := kafka.NewConsumer(conf)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create kafka consumer: %w", err)
+		return Consumer{}, fmt.Errorf("failed to create kafka consumer: %w", err)
 	}
-	log.Info("kafka client created", slog.String("url", url))
 
-	return &Consumer{log: log, consumer: c}, nil
+	return Consumer{log: log, consumer: c}, nil
 }
 
 func (c *Consumer) Consume(ctx context.Context, topic string) (<-chan []byte, error) {

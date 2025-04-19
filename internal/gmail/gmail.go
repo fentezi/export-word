@@ -2,7 +2,7 @@ package gmail
 
 import (
 	"errors"
-	"github.com/fentezi/export-word/config"
+	"github.com/fentezi/export-word/internal/config"
 	"gopkg.in/gomail.v2"
 )
 
@@ -18,9 +18,9 @@ type Gmail struct {
 	dial *gomail.Dialer
 }
 
-func New(gm config.Gmail) *Gmail {
+func New(gm config.Gmail) Gmail {
 	dial := gomail.NewDialer("smtp.gmail.com", 587, gm.Email, gm.Password)
-	return &Gmail{
+	return Gmail{
 		dial: dial,
 	}
 }
