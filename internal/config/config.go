@@ -18,7 +18,7 @@ type Config struct {
 type Kafka struct {
 	Address string `yaml:"address"`
 	Port    string `yaml:"port"`
-	Topic   string `env:"KAFKA_TOPIC" env-required:"true"`
+	Topic   string `yaml:"topic"`
 }
 
 type Mongo struct {
