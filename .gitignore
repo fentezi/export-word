@@ -142,4 +142,3 @@ fabric.properties
 build
 *.txt
 logs
-.dockerignore
