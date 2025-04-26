@@ -1,0 +1,8 @@
+build
+logs
+README.md
+LICENSE
+Makefile
+words.txt
+.gitignore
+.idea
