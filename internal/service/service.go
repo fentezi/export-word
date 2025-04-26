@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/docker/docker/daemon/logger"
 	"github.com/fentezi/export-word/internal/config"
 	"github.com/fentezi/export-word/internal/entity"
 	"github.com/fentezi/export-word/internal/gmail"
@@ -26,7 +25,7 @@ type Service struct {
 	cfg       config.Config
 	email     gmail.Gmail
 	repo      repository.Repository
-	broker    kafka.Consumer
+	kafka     broker.Consumer
 	wordCount int
 }
 
@@ -38,18 +37,17 @@ func New(
 	logger.Info("email initializing")
 	email := gmail.New(cfg.Gmail)
 
-	logger.Info("broker initializing")
-	broker, err := kafka.New(logger, cfg.Kafka)
+	logger.Info("kafka initializing")
+	kafka, err := broker.New(logger, cfg.Kafka)
 	if err != nil {
-		logger.Error("failed to create kafka broker", slog.String("error", err.Error()))
+		logger.Error("failed to create kafka kafka", slog.String("error", err.Error()))
 	}
-	defer broker.Close()
 
 	return Service{
 		logger: logger,
 		cfg:    cfg,
 		email:  email,
-		broker: broker,
+		kafka:  kafka,
 		repo:   repo,
 	}, nil
 }
@@ -57,14 +55,14 @@ func New(
 // Run starts the service, consuming messages from Kafka and periodically writing words to a
 // file and sending it via email.
 func (s *Service) Run(ctx context.Context) error {
-	topic := s.cfg.Kafka.Topic
-
 	var wg sync.WaitGroup
 	wg.Add(2)
 
+	defer s.kafka.Close()
+
 	go func() {
 		defer wg.Done()
-		s.consumeMessages(ctx, topic)
+		s.consumeMessages(ctx)
 	}()
 
 	go func() {
@@ -86,8 +84,8 @@ func (s *Service) Run(ctx context.Context) error {
 }
 
 // consumeMessages reads from Kafka, processes messages, and writes to a file
-func (s *Service) consumeMessages(ctx context.Context, topic string) {
-	ch, err := s.broker.Consume(ctx, topic)
+func (s *Service) consumeMessages(ctx context.Context) {
+	ch, err := s.kafka.Consume(ctx)
 	if err != nil {
 		s.logger.Error("failed to consume messages", "error", err)
 		return
@@ -125,7 +123,7 @@ func (s *Service) processMessage(ctx context.Context, msg []byte) error {
 	_, err = s.repo.GetWordByEventID(ctx, m.EventID)
 	if err != nil {
 		if errors.Is(err, repository.ErrDocumentNotFound) {
-			s.logger.Info("message not found, creating", slog.Any("message", m))
+			s.logger.Debug("message not found, creating", slog.Any("message", m))
 			if err := s.repo.CreateWord(ctx, toMongoMessage(m)); err != nil {
 				s.logger.Error(
 					"failed to save message to database", slog.String("error", err.Error()),
@@ -177,7 +175,7 @@ func (s *Service) writeWordsToFileAndSend(ctx context.Context) {
 		Body:    "List words",
 		File:    wordsFileName,
 	}
-	if err := s.gm.SendMessage(msg); err != nil {
+	if err := s.email.SendMessage(msg); err != nil {
 		s.logger.Error("failed to send message", "error", err)
 		return
 	}
