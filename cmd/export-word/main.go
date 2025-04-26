@@ -21,7 +21,7 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	log.Print("repository initialized")
+	logger.Info("repository initialized")
 	repo, err := repository.New(ctx, cfg.Mongo, logger)
 	if err != nil {
 		logger.Error("failed to create repository", slog.String("error", err.Error()))
