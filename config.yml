@@ -3,8 +3,8 @@ server:
   host: "localhost"
   port: "8070"
 kafka:
-  address: "localhost"
-  port: "9093"
+  address: "kafka"
+  port: "9092"
   topic: "words"
 mongo:
   database: "words"
