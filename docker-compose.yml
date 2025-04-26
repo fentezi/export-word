@@ -1,0 +1,9 @@
+services:
+  export-work:
+    build: .
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    external: true
