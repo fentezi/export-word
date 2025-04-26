@@ -3,7 +3,7 @@ BUILD_DIR=./build
 EXPORT_BIN=$(BUILD_DIR)/$(BINARY_NAME)
 MAIN_FILE=./cmd/export-word/main.go
 
-.PHONY: line run
+.PHONY: lint build run clean docker docker-run
 
 all: run
 
@@ -18,3 +18,9 @@ build: clean
 
 clean:
 	@rm -rf $(BUILD_DIR)
+
+docker:
+	docker compose build
+
+docker-run: docker
+	docker compose up -d
